@@ -10,13 +10,13 @@
 #include <string>
 #include <stdint.h>
 #include <eagle_thread.h>
-#include <eagle_simple_clientsocket.h>
+//#include <eagle_simple_clientsocket.h>
+#include <eagle_clientsocket.h>
 
 #include <log.h>
 #include <urcu/uatomic.h>
 #include <GetFinger.h>
 #include "memshare_global.h"
-#include "memshare.h"
 
 namespace MEMSHARE
 {
@@ -31,18 +31,19 @@ public:
 	~MemShareShareWork();
 
 	//初始化函数
-	static void Init(const char* ip, int Port, const char** cluster_ip, int cluster_num);
+	void Init(MemShareGlobal* global, const char* ip, int Port, const char** cluster_ip, int cluster_num);
 
 	//重新初始化函数, 用于集群ip、角色发生变化时使用
-	static void ReInit(const char** cluster_ip, int cluster_num);
+	void ReInit(const char** cluster_ip, int cluster_num);
+
+	//全局定义实例指针
+	MemShareGlobal* Global;
 
 protected:
 	//线程的启动栈帧
 	virtual void run();
 
 public:
-	//本类线程组
-	static MemShareShareWork* s_memshare_share_work_arr[MemShareGlobal::skMemShareShareWorkNum];
 	/**
 	 * @brief 客户端调用的共享函数实际指向的位置
 	 *
@@ -55,7 +56,7 @@ public:
 	 *		  [-1]:长度不合法
 	 *		  [-2]:目的机器号不合法
 	 */
-	static int Share(char* buf, uint32_t unit_len, uint32_t unit_num, uint32_t destination_id);
+	int Share(char* buf, uint32_t unit_len, uint32_t unit_num, uint32_t destination_id);
 
 private:
 	//发送接收逻辑
@@ -65,30 +66,31 @@ private:
 
 private:
 	//本机ip
-	static std::string _ip;
+	std::string _ip;
 	//内存共享端口号
-	static int _port;
+	int _port;
 	
 	//共享内存集群信息切换号
-	static int s_curr_switch_no;
+	int s_curr_switch_no;
 	//集群内机器数量
-	static int s_cluster_num[2];
+	int s_cluster_num[2];
 	//集群内机器ip
-	static std::string s_cluster_ip_arr[2][MemShareGlobal::skClusterMaxNum];
+	std::string s_cluster_ip_arr[2][MemShareGlobal::skClusterMaxNum];
 
 public:
 	//获取当前切换号
-	static int GetCurrSwitchNo() { return uatomic_read(&s_curr_switch_no); }
+	int GetCurrSwitchNo() { return uatomic_read(&s_curr_switch_no); }
 	//获取下次切换号
-	static int GetNextSwitchNo() { return !s_curr_switch_no; }
+	int GetNextSwitchNo() { return !s_curr_switch_no; }
 	//集群信息切换
-	static void Switch() { uatomic_set(&s_curr_switch_no, !s_curr_switch_no); }
+	void Switch() { uatomic_set(&s_curr_switch_no, !s_curr_switch_no); }
 
 private:
 	//线程号
 	int _tid;
 	//TCP客户端
-	static TCPSimpleClient _sock_arr[2][MemShareGlobal::skClusterMaxNum];
+	//TCPSimpleClient _sock_arr[2][MemShareGlobal::skClusterMaxNum];
+	TCPClient _sock_arr[2][MemShareGlobal::skClusterMaxNum];
 };
 
 }

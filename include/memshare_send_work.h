@@ -37,15 +37,12 @@ public:
 	 * @param [status]:状态码.
 	 *
 	 */
-	static void SendLastBuf(char *buf, int index, int status);
+	static void SendLastBuf(EpollServerPtr server, MemShareGlobal* Global, char *buf, int index, int status);
 
 private:
 	//构造回复包
-	static int ConstructResp(char *buf, int index, int status);
+	static int ConstructResp(char *buf, int status);
 
-public:
-	//服务器句柄
-	static EpollServerPtr s_server;
 };
 
 }

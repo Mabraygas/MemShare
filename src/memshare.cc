@@ -3,10 +3,6 @@
 namespace MEMSHARE
 {
 
-EpollServerPtr MemShare::g_server;
-std::string MemShare::_ip;
-int MemShare::_port;
-
 MemShare::MemShare()
 { }
 
@@ -19,45 +15,66 @@ void MemShare::Init(HandleFunc handle_func_ptr, const char* ip, int Port, const 
 	_ip = string(ip);
 	_port = Port;
 
+	share_offset = 0;
+
+	//创建全局定义实例
+	if(Global != NULL) {
+		delete Global;
+	}
+	Global = new MemShareGlobal;
+
+	//服务器变量
+	g_server = new EpollServer();
+
+	//工作线程的初始化
+	_handle_vec.clear();
+	_share_vec.clear();
 	//调用Share线程(客户端)的初始化函数
-	MemShareShareWork::Init(ip, Port, cluster_ip, cluster_num);
+	for(int gid = 0; gid < MemShareGlobal::skMemShareHandleWorkNum; gid ++ ) {
+		MemShareHandleWork* handle_work = new MemShareHandleWork(gid);
+		_handle_vec.push_back(handle_work);
+		handle_work->Init(g_server, Global, handle_func_ptr);
+	}
 	//初始化handle线程的解析函数指针
-	MemShareHandleWork::Init(handle_func_ptr);
-	
+	for(int gid = 0; gid < MemShareGlobal::skMemShareShareWorkNum; gid ++ ) {
+		MemShareShareWork* share_work = new MemShareShareWork(gid);
+		_share_vec.push_back(share_work);
+		share_work->Init(Global, ip, Port, cluster_ip, cluster_num);
+	}
+
 	//分配内存
 	AllocateBuffer();
 }
 
 void MemShare::ReInit(const char** cluster_ip, int cluster_num) {
 	//调用Share线程(客户端)的重新初始化函数
-	MemShareShareWork::ReInit(cluster_ip, cluster_num);
+	for(int gid = 0; gid < (int)_share_vec.size(); gid ++ ) {
+		_share_vec[gid]->ReInit(cluster_ip, cluster_num);
+	}
 }
 
 void MemShare::AllocateBuffer() {
 	//清空各种工作队列
-	MemShareGlobal::s_send_resource_queue.clear();
-	MemShareGlobal::s_recv_resource_queue.clear();
-	MemShareGlobal::s_memshare_handle_queue.clear();
-	MemShareGlobal::s_memshare_share_queue.clear();
+	Global->s_send_resource_queue.clear();
+	Global->s_recv_resource_queue.clear();
+	Global->s_memshare_handle_queue.clear();
+	Global->s_memshare_share_queue.clear();
 
 
 	//资源数组
-	MemShareGlobal::s_send_data = new MemShareGlobal::Resource[MemShareGlobal::skSendResourceArrLen];
-	MemShareGlobal::s_recv_data = new MemShareGlobal::Resource[MemShareGlobal::skRecvResourceArrLen];
+	Global->s_send_data = new MemShareGlobal::Resource[MemShareGlobal::skSendResourceArrLen];
+	Global->s_recv_data = new MemShareGlobal::Resource[MemShareGlobal::skRecvResourceArrLen];
 	
 	//资源号队列
 	for(int i = 0; i < MemShareGlobal::skSendResourceArrLen; i ++ ) {
-		MemShareGlobal::s_send_resource_queue.push_back(i);
+		Global->s_send_resource_queue.push_back(i);
 	}
 	for(int i = 0; i < MemShareGlobal::skRecvResourceArrLen; i ++ ) {
-		MemShareGlobal::s_recv_resource_queue.push_back(i);
+		Global->s_recv_resource_queue.push_back(i);
 	}
 }
 
 void MemShare::run() {
-
-	//服务器
-	g_server = new EpollServer();
 
 	//适配器
 	BindAdapterPtr adapter = new BindAdapter(g_server);
@@ -76,7 +93,7 @@ void MemShare::run() {
 	adapter->setProtocol(Parse);
 
 	//创建epollserver线程组, 并将适配器加入服务器
-	g_server->CreateWorkGroup<MemShareReceiveWork>("MemShareReceiveWork", MemShareGlobal::skMemShareRecvWorkNum, adapter);
+	g_server->CreateWorkGroup<MemShareReceiveWork>("MemShareReceiveWork", MemShareGlobal::skMemShareRecvWorkNum, adapter, (void *)Global);
 
 	//启动各工作线程
 	if(0 != StartThread()) {
@@ -126,17 +143,14 @@ int MemShare::StartThread() {
 	//启动各个工作线程
 	try {
 		//启动MemShare处理线程
-		for(int gid = 0; gid < MemShareGlobal::skMemShareHandleWorkNum; gid ++ ) {
-			MemShareHandleWork::s_memshare_handle_work_arr[gid] = new MemShareHandleWork(gid);
-			MemShareHandleWork::s_memshare_handle_work_arr[gid]->start();
+		for(int gid = 0; gid < (int)_handle_vec.size(); gid ++ ) {
+			_handle_vec[gid]->start();
 		}
 		//启动MemShare客户端发送线程
-		for(int gid = 0; gid < MemShareGlobal::skMemShareShareWorkNum; gid ++ ) {
-			MemShareShareWork::s_memshare_share_work_arr[gid] = new MemShareShareWork(gid);
-			MemShareShareWork::s_memshare_share_work_arr[gid]->start();
+		for(int gid = 0; gid < (int)_share_vec.size(); gid ++ ) {
+			_share_vec[gid]->start();
 		}
-		//MemShare Resp线程服务器赋值
-		MemShareSendWork::s_server = g_server;
+
 	}catch(EagleException& ex) {
 		fprintf(stderr, "Start Thread Error!\n");
 		return -1;
@@ -147,8 +161,12 @@ int MemShare::StartThread() {
 }
 
 int MemShare::Share(char* buf, uint32_t unit_len, uint32_t unit_num, uint32_t destination_id) {
+	share_offset ++ ;
+	if(share_offset >= 100 * MemShareGlobal::skMemShareShareWorkNum) {
+		share_offset = 0;
+	}
 	//调用Share线程的同名函数
-	return MemShareShareWork::Share(buf, unit_len, unit_num, destination_id);
+	return _share_vec[share_offset % MemShareGlobal::skMemShareShareWorkNum]->Share(buf, unit_len, unit_num, destination_id);
 }
 
 }

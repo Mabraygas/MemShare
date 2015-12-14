@@ -3,17 +3,6 @@
 namespace MEMSHARE
 {
 
-MemShareShareWork* MemShareShareWork::s_memshare_share_work_arr[MemShareGlobal::skMemShareShareWorkNum];
-
-std::string MemShareShareWork::_ip;
-int MemShareShareWork::_port;
-
-int MemShareShareWork::s_curr_switch_no;
-int MemShareShareWork::s_cluster_num[2];
-std::string MemShareShareWork::s_cluster_ip_arr[2][MemShareGlobal::skClusterMaxNum];
-
-TCPSimpleClient MemShareShareWork::_sock_arr[2][MemShareGlobal::skClusterMaxNum];
-
 MemShareShareWork::MemShareShareWork(int tid) {
 	//线程号赋值
 	_tid = tid;
@@ -22,10 +11,13 @@ MemShareShareWork::MemShareShareWork(int tid) {
 MemShareShareWork::~MemShareShareWork()
 { }
 
-void MemShareShareWork::Init(const char* ip, int Port, const char** cluster_ip, int cluster_num) {
+void MemShareShareWork::Init(MemShareGlobal* global, const char* ip, int Port, const char** cluster_ip, int cluster_num) {
 	//本机ip及端口号
 	_ip = string(ip);
 	_port = Port;
+
+	//全局定义实例指针
+	Global = global;
 
 	//检查cluster_num合法性
 	if(cluster_num < 0 || cluster_num > MemShareGlobal::skClusterMaxNum) {
@@ -48,9 +40,11 @@ void MemShareShareWork::Init(const char* ip, int Port, const char** cluster_ip, 
 		if(s_cluster_ip_arr[next_switch_no][id] == _ip) {
 			continue;
 		}
+		
 		//TCP客户端初始化
 		_sock_arr[next_switch_no][id].init(s_cluster_ip_arr[next_switch_no][id], _port, \
-				MemShareGlobal::skMemShareSocketTimeout, MemShareGlobal::skMemShareSocketTimeout);
+										//MemShareGlobal::skMemShareSocketTimeout, MemShareGlobal::skMemShareSocketTimeout);
+										MemShareGlobal::skMemShareSocketTimeout);
 		//关闭Nagle
 		_sock_arr[next_switch_no][id].set_nodelay(true);
 	}
@@ -87,9 +81,11 @@ void MemShareShareWork::ReInit(const char** cluster_ip, int cluster_num) {
 		if(s_cluster_ip_arr[next_switch_no][id] == _ip) {
 			continue;
 		}
+
 		//TCP客户端初始化
 		_sock_arr[next_switch_no][id].init(s_cluster_ip_arr[next_switch_no][id], _port, \
-				MemShareGlobal::skMemShareSocketTimeout, MemShareGlobal::skMemShareSocketTimeout);
+										//MemShareGlobal::skMemShareSocketTimeout, MemShareGlobal::skMemShareSocketTimeout);
+										MemShareGlobal::skMemShareSocketTimeout);
 		//关闭Nagle
 		_sock_arr[next_switch_no][id].set_nodelay(true);
 	}
@@ -117,24 +113,24 @@ int MemShareShareWork::Share(char* buf, uint32_t unit_len, uint32_t unit_num, ui
 	bool bexist;
 	//从资源号队列中获取资源号
 	do {
-		bexist = MemShareGlobal::s_send_resource_queue.pop_front(index, -1);
+		bexist = Global->s_send_resource_queue.pop_front(index, -1);
 	}while(!bexist); //无限制等待
 
 	//赋值资源结构体
-	MemShareGlobal::s_send_data[index].dest_id = destination_id;
-	MemShareGlobal::s_send_data[index].unit_len = unit_len;
-	MemShareGlobal::s_send_data[index].unit_num = unit_num;
+	Global->s_send_data[index].dest_id = destination_id;
+	Global->s_send_data[index].unit_len = unit_len;
+	Global->s_send_data[index].unit_num = unit_num;
 
 	//求buf的finger, 用来接收方校验数据
 	unsigned __int64 finger1, finger2;
 	Finger_Buf((unsigned char *)buf, unit_len * unit_num, finger1, finger2);
-	MemShareGlobal::s_send_data[index].finger = static_cast<uint64_t>(finger1);
+	Global->s_send_data[index].finger = static_cast<uint64_t>(finger1);
 
 	//buffer内容的拷贝
-	memcpy(MemShareGlobal::s_send_data[index].buffer, buf, unit_len * unit_num);
+	memcpy(Global->s_send_data[index].buffer, buf, unit_len * unit_num);
 	
 	//将资源号推送至share队列
-	MemShareGlobal::s_memshare_share_queue.push_back(index);
+	Global->s_memshare_share_queue.push_back(index);
 
 	//推送成功
 	return 0;
@@ -147,15 +143,15 @@ void MemShareShareWork::run() {
 	
 	while(1) {
 		//无限制等待
-		bexist = MemShareGlobal::s_memshare_share_queue.pop_front(index, -1);
+		bexist = Global->s_memshare_share_queue.pop_front(index, -1);
 		if(!bexist) { continue; } //不存在
 
 		//检查destination_id是否是本机
-		uint32_t destination_id = MemShareGlobal::s_send_data[index].dest_id;
+		uint32_t destination_id = Global->s_send_data[index].dest_id;
 		if(_ip == MemShareShareWork::s_cluster_ip_arr[GetCurrSwitchNo()][destination_id]) {
 			WARN("MEMSHARE: Do Not Allow To MemShare With the Server Itself!");
 			//回收资源并返回
-			MemShareGlobal::ReclaimSend(index);
+			Global->ReclaimSend(index);
 			continue;
 		}
 
@@ -166,11 +162,11 @@ void MemShareShareWork::run() {
 		}
 
 		//回收资源号
-		MemShareGlobal::ReclaimSend(index);
+		Global->ReclaimSend(index);
 	}
 }
 
-#define SOCK (MemShareShareWork::_sock_arr[curr_switch_no][destination_id])
+#define SOCK (_sock_arr[curr_switch_no][destination_id])
 int MemShareShareWork::Do(const int index, const uint32_t destination_id) {
 	//获取当前切换号
 	int curr_switch_no = GetCurrSwitchNo();
@@ -188,7 +184,7 @@ int MemShareShareWork::Do(const int index, const uint32_t destination_id) {
 
 	//尝试次数
 	int try_num = 0;
-	while(++try_num <= 1) { //为保证数据的完整性, 共尝试3次
+	while(++try_num <= 3) { //为保证数据的完整性, 共尝试3次
 		//发送
 		ret = SOCK.send(req_buf, packet_len, err);
 		//发送失败
@@ -226,7 +222,7 @@ int MemShareShareWork::Do(const int index, const uint32_t destination_id) {
 		break;
 	}
 	//尝试3次都失败
-	if(try_num > 1) {
+	if(try_num > 3) {
 		return -1;
 	}
 
@@ -237,7 +233,7 @@ int MemShareShareWork::Do(const int index, const uint32_t destination_id) {
 size_t MemShareShareWork::ConstructReq(char* req_buf, const int index) {
 	
 	size_t offset = 0;
-	size_t buffer_len = MemShareGlobal::s_send_data[index].unit_len * MemShareGlobal::s_send_data[index].unit_num;
+	size_t buffer_len = Global->s_send_data[index].unit_len * Global->s_send_data[index].unit_num;
 
 	*(uint64_t *)req_buf = *(uint64_t *)MemShareGlobal::skMemShareReqKey;
 	offset += 8;
@@ -248,10 +244,10 @@ size_t MemShareShareWork::ConstructReq(char* req_buf, const int index) {
 	*(uint32_t *)(req_buf + offset) = 8 + buffer_len;
 	offset += 4;
 
-	*(uint64_t *)(req_buf + offset) = MemShareGlobal::s_send_data[index].finger;
+	*(uint64_t *)(req_buf + offset) = Global->s_send_data[index].finger;
 	offset += 8;
 
-	memcpy(req_buf + offset, MemShareGlobal::s_send_data[index].buffer, \
+	memcpy(req_buf + offset, Global->s_send_data[index].buffer, \
 		   buffer_len);
 	offset += buffer_len;
 

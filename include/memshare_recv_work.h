@@ -28,12 +28,19 @@ public :
     /**
      * @brief 默认构造函数
      */
-    MemShareReceiveWork() {}
+    MemShareReceiveWork(void* para = NULL) {
+		if(NULL != para) {
+			Global = (MemShareGlobal*)para;
+		}
+	}
 
     /**
      * @brief 析构函数
      */
     ~MemShareReceiveWork() {}
+
+	//全局定义实例指针
+	MemShareGlobal* Global;
 
 protected:
     /** 

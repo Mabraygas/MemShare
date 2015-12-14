@@ -9,21 +9,21 @@ void MemShareReceiveWork::work(const RecvData &recv) {
 
 	//从接收资源号队列获取资源号
 	do {
-		bexist = MemShareGlobal::s_recv_resource_queue.pop_front(index, -1);
+		bexist = Global->s_recv_resource_queue.pop_front(index, -1);
 	}while(!bexist); //无限制等待
 
 	//客户端标记
-	MemShareGlobal::s_recv_data[index].dest_id = recv.uid;
+	Global->s_recv_data[index].dest_id = recv.uid;
 	//buffer长度
-	MemShareGlobal::s_recv_data[index].unit_len = *(uint32_t *)(recv.buffer.c_str()) - 8;
-	MemShareGlobal::s_recv_data[index].unit_num = 1;
+	Global->s_recv_data[index].unit_len = *(uint32_t *)(recv.buffer.c_str()) - 8;
+	Global->s_recv_data[index].unit_num = 1;
 	//buffer指纹
-	MemShareGlobal::s_recv_data[index].finger = *(uint64_t *)(recv.buffer.c_str() + 4);
+	Global->s_recv_data[index].finger = *(uint64_t *)(recv.buffer.c_str() + 4);
 	//buffer
-	memcpy(MemShareGlobal::s_recv_data[index].buffer, recv.buffer.c_str() + 12, MemShareGlobal::s_recv_data[index].unit_len);
+	memcpy(Global->s_recv_data[index].buffer, recv.buffer.c_str() + 12, Global->s_recv_data[index].unit_len);
 
 	//推送到处理线程
-	MemShareGlobal::s_memshare_handle_queue.push_back(index);
+	Global->s_memshare_handle_queue.push_back(index);
 }
 
 }

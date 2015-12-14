@@ -3,19 +3,17 @@
 namespace MEMSHARE
 {
 
-EpollServerPtr MemShareSendWork::s_server;
-
-void MemShareSendWork::SendLastBuf(char *buf, int index, int status) {
+void MemShareSendWork::SendLastBuf(EpollServerPtr server, MemShareGlobal* Global, char *buf, int index, int status) {
 
 	//构造回复包
-	int packet_len = ConstructResp(buf, index, status);
+	int packet_len = ConstructResp(buf, status);
 
 	//发送
-	s_server->send(MemShareGlobal::s_recv_data[index].dest_id, buf, packet_len);
+	server->send(Global->s_recv_data[index].dest_id, buf, packet_len);
 
 }
 
-int MemShareSendWork::ConstructResp(char *buf, int index, int status) {
+int MemShareSendWork::ConstructResp(char *buf, int status) {
 
 	int offset = 0;
 

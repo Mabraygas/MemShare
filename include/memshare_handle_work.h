@@ -33,17 +33,21 @@ public:
 	~MemShareHandleWork();
 
 	//初始化函数
-	static void Init(HandleFunc handle_func_ptr);
+	void Init(EpollServerPtr server, MemShareGlobal* global, HandleFunc handle_func_ptr);
+
+	//全局定义实例
+	MemShareGlobal* Global;
+
+	//全局服务器变量
+	EpollServerPtr _server;
 
 protected:
 	//线程的启动栈帧
 	virtual void run();
 
 public:
-	//本类线程组
-	static MemShareHandleWork* s_memshare_handle_work_arr[MemShareGlobal::skMemShareHandleWorkNum];
 	//静态函数指针, 由用户自行定义并需在Init函数中初始化
-	static HandleFunc _handle_func_ptr;
+	HandleFunc _handle_func_ptr;
 
 private:
 	//线程号

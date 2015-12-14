@@ -43,9 +43,9 @@ public:
 	}__attribute__ ((packed));
 
 	//发送方资源结构体数组
-	static Resource* s_send_data;
+	Resource* s_send_data;
 	//接收方资源结构体数组
-	static Resource* s_recv_data;
+	Resource* s_recv_data;
 
 	//发送方资源数组长度
 	static const int skSendResourceArrLen = 300;
@@ -81,29 +81,27 @@ public:
 
 public:
 	//发送方资源号队列
-	static ThreadQueue<int> s_send_resource_queue;
+	ThreadQueue<int> s_send_resource_queue;
 	//接收方资源号队列
-	static ThreadQueue<int> s_recv_resource_queue;
+	ThreadQueue<int> s_recv_resource_queue;
 	
 	//server side:
-	//receive队列
-	//static ThreadQueue<int> s_memshare_receive_queue;
 	//handle队列
-	static ThreadQueue<int> s_memshare_handle_queue;
+	ThreadQueue<int> s_memshare_handle_queue;
 
 	//client side:
 	//share队列
-	static ThreadQueue<int> s_memshare_share_queue;
+	ThreadQueue<int> s_memshare_share_queue;
 
 	//回收发送资源
-	static void ReclaimSend(int index);
+	void ReclaimSend(int index);
 	//回收接收资源
-	static void ReclaimRecv(int index);
+	void ReclaimRecv(int index);
 
-protected:
-	//禁止从类的外部生成类的实例
-	MemShareGlobal();
-	~MemShareGlobal();
+public:
+	//构造与析构
+	MemShareGlobal() { };
+	~MemShareGlobal() { };
 	//禁止复制
 	MemShareGlobal(const MemShareGlobal&);
 	//禁止赋值
